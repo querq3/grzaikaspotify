@@ -41,8 +41,8 @@ export default async function handler(req, res) {
     });
     // Czyść cookie
     res.setHeader('Set-Cookie', `pkce_${state}=; Path=/; Max-Age=0`);
-    // Przekieruj do frontendu z tokenami w URL
-    res.redirect(`/?access_token=${tokenRes.data.access_token}&refresh_token=${tokenRes.data.refresh_token}`);
+    // Przekieruj do frontendu z tokenami w URL (dodaj expires_in)
+    res.redirect(`/?access_token=${tokenRes.data.access_token}&refresh_token=${tokenRes.data.refresh_token}&expires_in=${tokenRes.data.expires_in}`);
   } catch (e) {
     res.status(500).send('Token exchange failed');
   }

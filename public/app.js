@@ -19,85 +19,63 @@ function getValidAccessTokenFromStorage() {
   return null;
 }
 
+let refreshInFlight = null;
 async function getFreshAccessToken() {
-  const access_token = localStorage.getItem('access_token');
-  const expiresAt = Number(localStorage.getItem('access_token_expires_at'));
-  if (access_token && expiresAt && Date.now() < expiresAt - 60000) {
-    return access_token;
-  }
+  // Use valid stored token if not near expiry
+  const existing = localStorage.getItem('access_token');
+  const exp = Number(localStorage.getItem('access_token_expires_at')) || 0;
+  if (existing && exp && Date.now() < exp - 60_000) return existing;
+
+  // Prevent stampede
+  if (refreshInFlight) return refreshInFlight;
+
   const refresh_token = localStorage.getItem('refresh_token');
   if (!refresh_token) {
     showError('Brak ważnego refresh_token. Zaloguj się ponownie.');
     setTimeout(() => renderLogin(), 1500);
     throw new Error('Brak refresh_token.');
   }
-  try {
-    showLoading('Odświeżanie tokena...');
-    const res = await fetch(getApiUrl('/refresh_token'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token })
-    });
-    hideLoading();
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ error: 'Unknown error' }));
-      showError('Nie udało się odświeżyć tokena. Zaloguj się ponownie.');
-      setTimeout(() => renderLogin(), 1500);
-      throw new Error(error.error || 'Błąd odświeżania tokena');
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(getApiUrl('/refresh_token'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token })
+      });
+      if (res.status === 429) {
+        // Respect Retry-After header if provided, fallback to 5s
+        const retryAfterHeader = res.headers.get('Retry-After');
+        const retryAfter = Number(retryAfterHeader) || 5;
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        refreshInFlight = null;
+        return getFreshAccessToken();
+      }
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(error.error || 'Błąd odświeżania tokena');
+      }
+      const data = await res.json();
+      if (!data.access_token) throw new Error('Brak access_token po odświeżeniu');
+      localStorage.setItem('access_token', data.access_token);
+      const ttl = Number(data.expires_in) || 3300; // ~55 min
+      localStorage.setItem('access_token_expires_at', String(Date.now() + ttl * 1000));
+      if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+      // Zapisz znacznik czasu udanego odświeżenia
+      localStorage.setItem('last_refresh_success_at', String(Date.now()));
+      return data.access_token;
+    } finally {
+      // Clear in-flight marker after small delay to avoid thundering herd
+      setTimeout(() => { refreshInFlight = null; }, 200);
     }
-    const data = await res.json();
-    if (!data.access_token) {
-      showError('Brak access_token po odświeżeniu. Zaloguj się ponownie.');
-      setTimeout(() => renderLogin(), 1500);
-      throw new Error('Brak access_token po odświeżeniu');
-    }
-    localStorage.setItem('access_token', data.access_token);
-    if (data.expires_in) {
-      localStorage.setItem('access_token_expires_at', String(Date.now() + data.expires_in * 1000));
-    }
-    if (data.refresh_token) {
-      localStorage.setItem('refresh_token', data.refresh_token);
-    }
-    return data.access_token;
-  } catch (e) {
-    hideLoading();
-    showError('Błąd odświeżania tokena. Zaloguj się ponownie.');
-    setTimeout(() => renderLogin(), 1500);
-    throw e;
-  }
+  })();
+  return refreshInFlight;
 }
 
 // Funkcje do obsługi tokenów Spotify po stronie klienta
+/* Removed direct Spotify token refresh to avoid dual paths and loops
 async function getValidAccessToken() {
-  let access_token = localStorage.getItem('access_token');
-  let refresh_token = localStorage.getItem('refresh_token');
-  let expires_at = parseInt(localStorage.getItem('expires_at'), 10);
-
-  if (!access_token || !refresh_token || !expires_at) {
-    throw new Error('Brak tokenów Spotify. Zaloguj się ponownie.');
-  }
-
-  if (Date.now() > expires_at - 60000) { // wygasł lub zaraz wygaśnie
-    // Odśwież token bezpośrednio przez Spotify API
-    const params = new URLSearchParams();
-    params.append('grant_type', 'refresh_token');
-    params.append('refresh_token', refresh_token);
-    params.append('client_id', '37cd333b19754a508eeff2f7b92989e9');
-    params.append('client_secret', '113f78eae7834459b613fcd2eabb2981');
-    const res = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params
-    });
-    if (!res.ok) throw new Error('Nie udało się odświeżyć tokena Spotify');
-    const data = await res.json();
-    access_token = data.access_token;
-    localStorage.setItem('access_token', access_token);
-    localStorage.setItem('expires_at', Date.now() + data.expires_in * 1000);
-    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
-  }
-  return access_token;
+  // legacy
 }
+*/
 
 // Refaktoryzacja spotifyFetch: accessToken jest opcjonalny, domyślnie pobierany przez getFreshAccessToken
 async function spotifyFetch(endpoint, accessToken, options = {}) {
@@ -214,25 +192,20 @@ async function spotifyFetch(endpoint, accessToken, options = {}) {
       }
       
       if (res.status === 204) return {};      if (res.status === 401) {
-        // Przy wygaśnięciu tokena pobierz nowy z backendu i spróbuj ponownie
+        // try a single refresh then retry
         try {
           const newToken = await getFreshAccessToken();
           if (newToken) {
-            return spotifyFetch(endpoint, newToken, options);
+            accessToken = newToken;
+            return fetch(url, {
+              ...options,
+              headers: { ...(options.headers || {}), Authorization: `Bearer ${newToken}`, 'Content-Type': 'application/json' }
+            }).then(r => r.json());
           }
         } catch (tokenError) {
           console.error('Failed to refresh token:', tokenError);
-          // Sprawdź, czy błąd dotyczy obu nieważnych tokenów (np. backend zwraca taki komunikat)
-          if (tokenError && tokenError.message && tokenError.message.match(/both access and refresh tokens are invalid|invalid tokens|brak aktywnej sesji|brak access_token/i)) {
-            showError('Sesja wygasła lub jest nieważna. Zaloguj się ponownie.');
-            localStorage.clear();
-            setTimeout(() => window.location.reload(), 2000);
-            throw new Error('Session expired');
-          } else {
-            // W innych przypadkach nie wylogowuj, tylko pokaż błąd i pozwól na ponowną próbę
-            showError('Błąd odświeżania tokena. Spróbuj ponownie.');
-            throw new Error('Token refresh failed');
-          }
+          showError('Sesja wygasła lub błąd tokena. Odśwież stronę lub zaloguj się ponownie.');
+          throw tokenError;
         }
       }
       if (res.status === 403) {
@@ -1004,9 +977,17 @@ function getTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const access_token = params.get('access_token');
   const refresh_token = params.get('refresh_token');
+  const expires_in = params.get('expires_in');
   if (access_token) {
     localStorage.setItem('access_token', access_token);
     if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
+    if (expires_in) {
+      const expiresAt = Date.now() + Number(expires_in) * 1000;
+      localStorage.setItem('access_token_expires_at', String(expiresAt));
+    } else {
+      // fallback 55 min if missing
+      localStorage.setItem('access_token_expires_at', String(Date.now() + 55 * 60 * 1000));
+    }
     window.history.replaceState({}, document.title, '/');
   }
 }
@@ -1030,48 +1011,6 @@ function getTokenFromInviteLink() {
     }
   }
   return false;
-}
-
-async function refreshTokenFunc() {
-  const refresh_token = localStorage.getItem('refresh_token');
-  if (!refresh_token) return;
-  
-  if (window._isRefreshing) {
-    await new Promise(resolve => {
-      const checkRefresh = setInterval(() => {
-        if (!window._isRefreshing) {
-          clearInterval(checkRefresh);
-          resolve();
-        }
-      }, 100);
-    });
-    return localStorage.getItem('access_token');
-  }
-  
-  try {
-    window._isRefreshing = true;
-    
-    const res = await fetch(getApiUrl('/refresh_token'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token })
-    });
-    
-    if (!res.ok) {
-      throw new Error('Token refresh failed');
-    }
-    
-    const data = await res.json();
-    if (data.access_token) localStorage.setItem('access_token', data.access_token);
-    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
-    return data.access_token;
-  } catch (e) {
-    console.error('Token refresh error:', e);
-    showError('Błąd odświeżania tokena');
-    return null;
-  } finally {
-    window._isRefreshing = false;
-  }
 }
 
 async function checkApiStatus() {
@@ -1098,7 +1037,7 @@ window.addEventListener('storage', (e) => {
 
 let isPolling = false;
 let apiHealthy = true;
-let appVersion = '1.1.0';
+let appVersion = '2.0.0';
 
 async function main() {
   if (getTokenFromInviteLink()) return;
@@ -1219,6 +1158,9 @@ function setupPolling() {
     if (healthCheckInterval) clearInterval(healthCheckInterval);
   });
 }
+
+// No-op to avoid reference errors if called during reset
+function stopTokenRefreshWorker() {}
 
 function resetAppState() {
   // Zatrzymaj workera przy resecie aplikacji
