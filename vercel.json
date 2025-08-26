@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "routes": [
+    { "src": "/api/spotify/player-controls", "dest": "/api/spotify/player-controls.mjs" },
+    { "src": "/api/spotify/user-info", "dest": "/api/spotify/user-info.mjs" },
+    { "src": "/api/spotify/search-queue", "dest": "/api/spotify/search-queue.mjs" },
+    { "src": "/api/spotify/player/(.+)", "dest": "/api/spotify/player-controls.mjs?action=$1" },
+    { "src": "/api/spotify/info/(.+)", "dest": "/api/spotify/user-info.mjs?type=$1" },
+    { "src": "/api/spotify/search", "dest": "/api/spotify/search-queue.mjs?action=search" },
+    { "src": "/api/spotify/queue/(.+)", "dest": "/api/spotify/search-queue.mjs?action=$1" },
+    { "src": "/api/spotify/playlist", "dest": "/api/spotify/user-info.mjs?type=playlist" },
+    { "src": "/api/spotify/playlists", "dest": "/api/spotify/user-info.mjs?type=playlists" },
+    { "src": "/api/spotify/currently-playing", "dest": "/api/spotify/user-info.mjs?type=currently-playing" },
+    { "src": "/api/(.*)", "dest": "/api/$1.js" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}

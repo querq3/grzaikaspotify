@@ -1,0 +1,19 @@
+{
+  "name": "spotify-remote-control",
+  "version": "1.0.0",
+  "description": "Modern web app for remote Spotify control via Spotify Web API.",
+  "type": "module",
+  "scripts": {
+    "start": "vercel dev",
+    "build": "echo 'No build needed for static files'"
+  },
+  "dependencies": {
+    "@vercel/blob": "^1.1.1",
+    "axios": "^1.10.0",
+    "cookie": "^1.0.2",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}
