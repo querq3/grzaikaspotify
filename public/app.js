@@ -303,7 +303,7 @@ function renderLogin(message) {
   document.getElementById('app').innerHTML = `
     <div class="login-container">
       <h1>Grzaika Spotify 2.0</h1>
-      <p class="login-subtitle">Zdalne sterowanie Spotify dla eden · edenitoo · Ola · Grzaiki</p>
+      <p class="login-subtitle">Zdalne sterowanie Spotify dla Oli</p>
       ${message ? `<div class="login-message">${message}</div>` : ''}
       <div class="role-selection">
         <div class="role-option">
