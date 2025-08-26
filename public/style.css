@@ -74,7 +74,7 @@ header {
 }
 
 header::after {
-  content: "v2.0 — eden · edenitoo · Ola · Grzaiki";
+  content: "v2.0";
   color: var(--text-subdued);
   font-size: 11px;
   margin-left: 12px;
