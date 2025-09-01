@@ -720,6 +720,7 @@ function renderSearch() {
           <img src="${track.album.images?.[0]?.url || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="%23333"/></svg>'}" class="result-cover" />
           <span>${track.name} - ${track.artists.map(a => a.name).join(', ')}</span>
           <button data-uri="${track.uri}" class="add-queue-btn">Dodaj</button>
+          <button data-uri="${track.uri}" class="play-track-btn">Play</button>
         </div>
       `).join('');
       document.querySelectorAll('.add-queue-btn').forEach(btn => {
@@ -731,6 +732,12 @@ function renderSearch() {
           })
             .then(() => showSuccess('Dodano'))
             .catch(() => showError('Błąd'));
+        };
+      });
+      document.querySelectorAll('.play-track-btn').forEach(btn => {
+        btn.onclick = () => {
+          const uri = btn.dataset.uri;
+          playTrack(uri);
         };
       });
     } catch (e) {
@@ -1246,3 +1253,16 @@ window.addEventListener('offline', () => showError('Offline'));
 document.addEventListener('DOMContentLoaded', () => {
   main();
 });
+
+function playTrack(trackUri) {
+  const accessToken = localStorage.getItem('access_token');
+  fetch('/api/spotify/player/play-track', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + accessToken
+    },
+    body: JSON.stringify({ track_uri: trackUri })
+  })
+  .then(res => res.ok ? showSuccess('Zagrano!') : showError('Błąd odtwarzania'));
+}

@@ -48,6 +48,20 @@ export default async function handler(req, res) {
       spotifyUrl = `https://api.spotify.com/v1/me/player/seek?position_ms=${position_ms}`;
       method = 'PUT';
       break;
+    case 'play-track': {
+      let track_uri = req.query.track_uri;
+      // Jeśli POST/PUT, pobierz z body
+      if (!track_uri && req.body && typeof req.body === 'object') {
+        track_uri = req.body.track_uri;
+      }
+      if (!track_uri) {
+        return res.status(400).json({ error: 'Brak track_uri' });
+      }
+      spotifyUrl = 'https://api.spotify.com/v1/me/player/play';
+      method = 'PUT';
+      body = JSON.stringify({ uris: [track_uri] });
+      break;
+    }
     default:
       // Domyślnie zwróć status playera
       spotifyUrl = 'https://api.spotify.com/v1/me/player';

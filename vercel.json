@@ -5,6 +5,7 @@
     { "src": "/api/spotify/user-info", "dest": "/api/spotify/user-info.mjs" },
     { "src": "/api/spotify/search-queue", "dest": "/api/spotify/search-queue.mjs" },
     { "src": "/api/spotify/player/(.+)", "dest": "/api/spotify/player-controls.mjs?action=$1" },
+    { "src": "/api/spotify/player/play-track", "dest": "/api/spotify/player-controls.mjs?action=play-track" },
     { "src": "/api/spotify/info/(.+)", "dest": "/api/spotify/user-info.mjs?type=$1" },
     { "src": "/api/spotify/search", "dest": "/api/spotify/search-queue.mjs?action=search" },
     { "src": "/api/spotify/queue/(.+)", "dest": "/api/spotify/search-queue.mjs?action=$1" },
